@@ -1,0 +1,24 @@
+### versions
+containerd_version: "1.7.2-0ubuntu1~22.04.1"
+kubectl_version: "1.29.2-1.1"
+kubelet_version: "1.29.2-1.1"
+kubeadm_version: "1.29.2-1.1"
+cri_version: "1.25"
+
+#### config kubeadm
+cluster_virtual_ip: "192.168.95.73"
+cluster_virtual_port: "8443"
+
+cri_socket: '"unix:///var/run/containerd/containerd.sock"'
+master_node_name: master-node1
+kubernetes_version: '"1.29.2"'
+kubernetes_pod_subnet: '"10.10.0.0/16"'
+kubernetes_service_subnet: '"10.20.0.0/16"'
+
+
+#### config kubelet
+kubelet_config_systemReserved_cpu: "500m"
+kubelet_config_systemReserved_memory: "512Mi"
+kubelet_config_systemReserved_ephemeral: "2Gi"
+kubelet_config_LogMaxSize: "1Mi"
+kubelet_config_LogMaxFiles: "3"

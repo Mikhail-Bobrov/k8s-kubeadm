@@ -1,0 +1,5 @@
+---
+- import_playbook: playbooks/prepare.yaml
+- import_playbook: playbooks/ha.yaml
+- import_playbook: playbooks/master.yaml
+- import_playbook: playbooks/worker.yaml

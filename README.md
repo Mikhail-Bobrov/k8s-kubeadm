@@ -1,1 +1,1 @@
-# k8s-kubeadm
+k8s

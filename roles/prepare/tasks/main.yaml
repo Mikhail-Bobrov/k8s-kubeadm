@@ -1,0 +1,117 @@
+---
+- name: Check for swap file
+  command: swapon --show
+  register: swapon_output
+  changed_when: false
+  check_mode: false
+
+- name: Turn off swap
+  command: swapoff -a
+  when: swapon_output.stdout
+
+- name: Ensure br_netfilter is loaded on boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/modules-kubernetes.conf
+    content: |
+      br_netfilter
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload sysctl
+
+- name: Configure sysctl
+  ansible.builtin.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { name: "net.ipv4.ip_forward", value: "1" }
+    - { name: "net.bridge.bridge-nf-call-iptables", value: "1" }
+    - { name: "net.ipv4.ip_nonlocal_bind", value: "1" }
+  become: yes
+
+- name: Remove existing Kubernetes GPG key file if it exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    state: absent
+  become: yes
+
+- name: Add apt repositories
+  ansible.builtin.lineinfile:
+    path: "{{ item.path }}"
+    line: "{{ item.line }}"
+    create: yes
+  loop:
+    - path: /etc/apt/sources.list.d/cri-o.list
+      line: "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/{{ cri_version }}:/{{ cri_version }}.0/xUbuntu_22.04/ /"
+    - path: /etc/apt/sources.list.d/kubernetes.list
+      line: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+  become: yes
+
+- name: Add Kubernetes GPG key
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    executable: /bin/bash
+  become: yes
+
+- name: apt update
+  ansible.builtin.apt:
+    update_cache: yes
+  become: yes
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - jq
+      - bash-completion
+      - python3
+      - tar
+      - containerd={{ containerd_version }}
+      - "kubectl={{ kubectl_version }}"
+      - "kubelet={{ kubelet_version }}"
+      - "kubeadm={{ kubeadm_version }}"
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Copy crictl
+  ansible.builtin.copy:
+    src: files/crictl.yaml
+    dest: /etc/crictl.yaml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Download crictl binary
+  ansible.builtin.get_url:
+    url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{ cri_version }}.0/crictl-v{{ cri_version }}.0-linux-amd64.tar.gz"
+    dest: "/tmp/crictl-v{{ cri_version }}.0-linux-amd64.tar.gz"
+    mode: '0644'
+
+- name: Untar crictl binary
+  ansible.builtin.unarchive:
+    src: "/tmp/crictl-v{{ cri_version }}.0-linux-amd64.tar.gz"
+    dest: "/usr/local/bin"
+    remote_src: yes
+    extra_opts: [--strip-components=1]
+
+- name: Make crictl binary executable
+  ansible.builtin.file:
+    path: "/usr/local/bin/crictl"
+    state: file
+    mode: '0755'
+
+- name: containerd enabled and started
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  loop:
+    - containerd
+  become: yes

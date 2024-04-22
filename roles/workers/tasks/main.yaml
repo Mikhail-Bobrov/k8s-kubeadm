@@ -1,0 +1,33 @@
+- name: Create /etc/kubernetes/ directory
+  ansible.builtin.file:
+    path: /etc/kubernetes/
+    state: directory
+    mode: '0755'
+
+- name: Check if Kubernetes cluster is initialized
+  command: kubectl cluster-info
+  register: cluster_info
+  when: inventory_hostname == groups['k8s_masters'][0]
+  ignore_errors: true
+  changed_when: false
+
+- name: Prepare to Join another master node
+  include_tasks: certs.yaml
+  when: 
+    - inventory_hostname == groups['k8s_masters'][0]
+
+- name: Get list of current nodes
+  shell: kubectl get nodes -o jsonpath='{.items[*].metadata.name}'
+  register: nodes_list
+  when: inventory_hostname == groups['k8s_masters'][0]
+  run_once: true
+
+- name: Join master nodes
+  shell: 
+    cmd: |
+      kubeadm join {{ hostvars[groups['k8s_masters'][0]].join_path.stdout }} \
+      --token {{ hostvars[groups['k8s_masters'][0]].join_token.stdout }} \
+      --discovery-token-ca-cert-hash sha256:{{ hostvars[groups['k8s_masters'][0]].discovery_token_ca_cert_hash.stdout }} \
+  when: 
+    - inventory_hostname not in nodes_list.stdout
+    - inventory_hostname != groups['k8s_workers'][0]
